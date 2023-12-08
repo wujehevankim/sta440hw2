@@ -1,0 +1,302 @@
+---
+title: "hw2 - reproducibility"
+subtitle: "sta440 with Dr. Jiang"
+author: "Evan Kim"
+format: 
+  html:
+    self-contained: true
+---
+
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(data.table)
+library(ggplot2)
+library(purrr)
+library(dplyr)
+library(knitr)
+```
+
+
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+library(readr)
+rawData <- read_csv("ddh.csv")
+```
+
+
+#### Reproducing Figure 1 \newline
+\vspace{10pt}
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+# "Overall, graft dysfunction was observed in 145 patients (25% of the analyzed sample)." --> delayed_fn
+
+
+# IGF (white): "427 recipients experiencing initial graft function" --> delayed_fn == 0
+# LGD (gray): "145 recipients experiencing liver graft DYSfunction" --> delayed_fn == 1
+igfSet <- rawData %>% 
+          filter(delayed_fn == 0)
+lgdSet <- rawData %>% 
+          filter(delayed_fn == 1)
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+# TWA: "time-weighted average (TWA) of donor glucose measurements" --> glutwa
+# Range: "donor glucose range" --> glurange
+# SD: "donor glucose standard deviation" --> glusd
+
+
+df_glutwa <- data.frame(
+    values = c(igfSet$glutwa, lgdSet$glutwa),
+    TWA = factor(c(rep("IGF", length(igfSet$glutwa)), 
+                     rep("LGD", length(lgdSet$glutwa))))
+)
+
+df_glurange <- data.frame(
+    values = c(igfSet$glurange, lgdSet$glurange),
+    Range = factor(c(rep("IGF", length(igfSet$glurange)), 
+                     rep("LGD", length(lgdSet$glurange))))
+)
+
+df_glusd <- data.frame(
+    values = c(igfSet$glusd, lgdSet$glusd),
+    SD = factor(c(rep("IGF", length(igfSet$glusd)), 
+                     rep("LGD", length(lgdSet$glusd))))
+)
+```
+
+```{r fig.cap="Figure 1: Boxplots (minimum, first quartile, median, third quartile, and maximum) of time-weighted average (TWA) of donor glucose measurements, donor glucose range, and donor glucose standard deviation (SD) for 427 recipients experiencing initial graft function (IGF, in white) and for 145 recipients experiencing liver graft dysfunction (LGD, in gray).", message=FALSE, warning=FALSE, echo=FALSE}
+custom_gray <- rgb(147, 149, 152, maxColorValue=255)
+
+
+par(bty = "n")
+
+
+layout(matrix(1:3, nrow = 1), widths = c(1, 1, 1), heights = c(1))
+
+
+
+boxplot(values ~ TWA, data = df_glutwa,
+        col = c("white", custom_gray),
+        main = "",
+        ylab = "",
+        names = c("IGF", "LGD"),
+        outline = FALSE,
+        range=0,
+        log = "y",
+        ylim = c(50, 500),
+        las = 1)
+
+boxplot(values ~ Range, data = df_glurange,
+        col = c("white", custom_gray),
+        main = "",
+        ylab = "",
+        names = c("IGF", "LGD"),
+        outline = FALSE,
+        range=0,
+        log = "y",
+        ylim = c(1, 1000),
+        las = 1)
+
+
+boxplot(values ~ SD, data = df_glusd,
+        col = c("white", custom_gray),
+        main = "",
+        ylab = "",
+        names = c("IGF", "LGD"),
+        outline = FALSE,
+        notch=FALSE,
+        range=0,
+        log = "y",
+        ylim = c(1, 300),
+        las = 1)
+
+
+title("Donor glucose measures, mg/dL", outer = TRUE, line = -1, cex.main = 1.5)
+
+```
+
+\vspace{150pt}
+
+#### Reproducing Table 2 \newline
+\vspace{10pt}
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+# In our primary analysis (Table 2), we found no significant relationship
+# between the range of donor glucose measurements
+# and graft dysfunction after donor characteristics were
+# adjusted for (P = .14, Wald test, adjusted odds ratio
+# [95% confidence interval] for graft dysfunction corresponding to a relative
+# doubling in TWA of donor glucose measurements of 1.43 [0.89, 2.30]).
+# Likewise, neither donors’ glucose range (P = .52, adjusted odds
+# ratio corresponding to a relative doubling in donor
+# glucose range of 1.06 [0.87, 1.29]) nor the standard
+# deviation of donor glucose measurements (P = .13,
+# odds ratio corresponding to a relative doubling in TWA
+# of donor glucose measurements of 1.14 [0.92, 1.42]) 
+# was related to liver graft dysfunction.
+```
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+# In our model, we adjusted for the
+# following donor characteristics:
+# age, cause of death,
+# calculated Model for End-Stage Liver Disease score, --> probs relating to donor's
+# and hemodynamic instability (as defined by need for
+# dopamine >5 µg/kg per minute, vasopressin >1 U/h,
+# or administration of any other vasopressor)
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+# The primary measure was timeweighted averages of donors’ glucose measurements.
+
+
+# "Odds ratios corresponding to a relative doubling in TWA" --> so, log2-transform
+unadjusted_model_glutwa <- glm(delayed_fn ~ log2(glutwa), data = rawData, family = "binomial")
+adjusted_model_glutwa <- glm(delayed_fn ~ log2(glutwa) + d_age + as.factor(d_cod) + hemo_instability, data = rawData, family = "binomial")
+
+#unadjusted_model_glutwa
+#adjusted_model_glutwa
+
+
+# getting the CIs
+confint_unadjusted <- confint(unadjusted_model_glutwa)
+exp_confint_unadjusted <- exp(confint_unadjusted)
+primaryExposureTWAUnadjustedCI <- exp_confint_unadjusted["log2(glutwa)", ]
+
+confint_adjusted <- confint(adjusted_model_glutwa)
+exp_confint_adjusted <- exp(confint_adjusted)
+primaryExposureTWAAdjustedCI <- exp_confint_adjusted["log2(glutwa)", ]
+
+
+# "The null hypothesis of odds ratio equal to 1.0 was evaluated by using a
+# standard (Wald) z test for logistic model coefficients."
+
+# getting p-values
+primaryExposureTWAUnadjusted_pValue <- summary(unadjusted_model_glutwa)$coefficients[, "Pr(>|z|)"][2]
+primaryExposureTWAAdjusted_pValue <- summary(adjusted_model_glutwa)$coefficients[, "Pr(>|z|)"][2]
+
+
+# results = primaryExposureTWAUnadjustedCI, primaryExposureTWAAdjustedCI, primaryExposureTWAUnadjusted_pValue, primaryExposureTWAAdjusted_pValue
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+# Our secondary measures of interest were the range (ie, donor maximum minus
+# donor minimum) and the standard deviation of donors’ glucose measurements
+```
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#Range
+unadjusted_model_glurange <- glm(delayed_fn ~ log2(glurange), data = rawData, family = "binomial")
+adjusted_model_glurange <- glm(delayed_fn ~ log2(glurange) + d_age + as.factor(d_cod) + hemo_instability, data = rawData, family = "binomial")
+
+
+
+RANGEconfint_unadjusted <- confint(unadjusted_model_glurange, level = .975)
+RANGEexp_confint_unadjusted <- exp(RANGEconfint_unadjusted)
+primaryExposureRANGEUnadjustedCI <- RANGEexp_confint_unadjusted["log2(glurange)", ]
+
+RANGEconfint_adjusted <- confint(adjusted_model_glurange, level = .975)
+RANGEexp_confint_adjusted <- exp(RANGEconfint_adjusted)
+primaryExposureRANGEAdjustedCI <- RANGEexp_confint_adjusted["log2(glurange)", ]
+
+# getting p-values
+primaryExposureRANGEUnadjusted_pValue <- summary(unadjusted_model_glurange)$coefficients[, "Pr(>|z|)"][2]
+primaryExposureRANGEAdjusted_pValue <- summary(adjusted_model_glurange)$coefficients[, "Pr(>|z|)"][2]
+
+
+# results = primaryExposureRANGEUnadjustedCI, primaryExposureRANGEAdjustedCI, primaryExposureRANGEUnadjusted_pValue, primaryExposureRANGEAdjusted_pValue
+```
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+#SD
+unadjusted_model_glusd <- glm(delayed_fn ~ log2(glusd), data = rawData, family = "binomial")
+adjusted_model_glusd <- glm(delayed_fn ~ log2(glusd) + d_age + as.factor(d_cod) + hemo_instability, data = rawData, family = "binomial")
+
+
+
+SDconfint_unadjusted <- confint(unadjusted_model_glusd, level = .975)
+SDexp_confint_unadjusted <- exp(SDconfint_unadjusted)
+primaryExposureSDUnadjustedCI <- SDexp_confint_unadjusted["log2(glusd)", ]
+
+SDconfint_adjusted <- confint(adjusted_model_glusd, level = .975)
+SDexp_confint_adjusted <- exp(SDconfint_adjusted)
+primaryExposureSDAdjustedCI <- SDexp_confint_adjusted["log2(glusd)", ]
+
+# getting p-values
+primaryExposureSDUnadjusted_pValue <- summary(unadjusted_model_glusd)$coefficients[, "Pr(>|z|)"][2]
+primaryExposureSDAdjusted_pValue <- summary(adjusted_model_glusd)$coefficients[, "Pr(>|z|)"][2]
+
+
+# results = primaryExposureSDUnadjustedCI, primaryExposureSDAdjustedCI, primaryExposureSDUnadjusted_pValue, primaryExposureSDAdjusted_pValue
+```
+
+
+
+
+
+
+
+\vspace{-400pt}
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+library(knitr)
+primaryExposure_TWA_df <- data.frame(
+  Status = c("Unadjusted", "Adjusted"),
+  Odds_Ratio = c(sprintf("%.2f", ( primaryExposureTWAUnadjustedCI[1] + primaryExposureTWAUnadjustedCI[2] ) / 2), sprintf("%.2f", ( primaryExposureTWAAdjustedCI[1] + primaryExposureTWAAdjustedCI[2] ) / 2)),
+  CI = c(sprintf("(%.2f, %.2f)", primaryExposureTWAUnadjustedCI[1], primaryExposureTWAUnadjustedCI[2]), sprintf("(%.2f, %.2f)", primaryExposureTWAAdjustedCI[1], primaryExposureTWAAdjustedCI[2])),
+  P = c(sprintf("%.2f", primaryExposureTWAUnadjusted_pValue[1]), sprintf("%.2f", primaryExposureTWAAdjusted_pValue[1]))
+)
+
+
+knitr::kable(primaryExposure_TWA_df, col.names = c("Primary exposure: Time-weighted average", "Odds ratio", "(95% CI)", "P<sup>a</sup>"), align = 'c', escape = FALSE)
+
+
+
+
+
+
+secondaryExposure_RANGE_df <- data.frame(
+  Status = c("Unadjusted", "Adjusted<sup>c</sup>"),
+  Odds_Ratio = c(sprintf("%.2f", ( primaryExposureRANGEUnadjustedCI[1] + primaryExposureRANGEUnadjustedCI[2] ) / 2), sprintf("%.2f", ( primaryExposureRANGEAdjustedCI[1] + primaryExposureRANGEAdjustedCI[2] ) / 2)),
+  CI = c(sprintf("(%.2f, %.2f)", primaryExposureRANGEUnadjustedCI[1], primaryExposureRANGEUnadjustedCI[2]), sprintf("(%.2f, %.2f)", primaryExposureRANGEAdjustedCI[1], primaryExposureRANGEAdjustedCI[2])),
+  P = c(sprintf("%.2f", primaryExposureRANGEUnadjusted_pValue[1]), sprintf("%.2f", primaryExposureRANGEAdjusted_pValue[1]))
+)
+
+
+knitr::kable(secondaryExposure_RANGE_df, col.names = c("Secondary exposure: Range", "Odds ratio", "(95% CI)<sup>b</sup>", "P<sup>a</sup>"), align = 'c', escape = FALSE)
+
+
+
+
+
+
+secondaryExposure_SD_df <- data.frame(
+  Status = c("Unadjusted", "Adjusted<sup>c</sup>"),
+  Odds_Ratio = c(sprintf("%.2f", ( primaryExposureSDUnadjustedCI[1] + primaryExposureSDUnadjustedCI[2] ) / 2), sprintf("%.2f", ( primaryExposureSDAdjustedCI[1] + primaryExposureSDAdjustedCI[2] ) / 2)),
+  CI = c(sprintf("(%.2f, %.2f)", primaryExposureSDUnadjustedCI[1], primaryExposureSDUnadjustedCI[2]), sprintf("(%.2f, %.2f)", primaryExposureSDAdjustedCI[1], primaryExposureSDAdjustedCI[2])),
+  P = c(sprintf("%.2f", primaryExposureSDUnadjusted_pValue[1]), sprintf("%.2f", primaryExposureSDAdjusted_pValue[1]))
+)
+
+
+knitr::kable(secondaryExposure_SD_df, col.names = c("Secondary exposure: SD", "Odds ratio", "(95% CI)<sup>b</sup>", "P<sup>a</sup>"), align = 'c', escape = FALSE)
+
+
+
+
+
+
+
+```
+Table 2. Odds ratios and corresponding 95% confidence intervals (CIs) for liver graft dysfunction for a relative doubling in time-weighted average donor glucose, donor glucose range, and donor glucose standard deviation
+\newline
+\vspace{10pt}
+<div style="text-align: left; font-size: smaller;">
+  a. P values from Wald z test for model coefficients.
+  b. Confidence interval estimates adjusted by using the Bonferroni correction for 2 simultaneous secondary outcomes.
+  c. Adjusted odds ratio estimates from a multivariable logistic regression model, including donor age, donor cause of death, and donor hemodynamic instability (as defined by need of dopamine >5 µg/kg per minute, vasopressin >1 U/h, or administration of any other vasopressor).
+</div>
+
+
